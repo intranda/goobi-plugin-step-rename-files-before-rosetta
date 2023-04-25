@@ -2,6 +2,7 @@ package de.intranda.goobi.plugins;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
  * This file is part of a plugin for Goobi - a Workflow tool for the support of mass digitization.
@@ -149,9 +150,21 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
             // get new filename 
             String fileName = file.getFileName().toString();
             String newFileName = getNewFileName(fileName, namesMap);
-            // get new file path
-            Path targetPath = file.getParent().resolve(newFileName);
-            log.debug("targetPath = " + targetPath);
+
+            try {
+                tryRenameFile(file, newFileName);
+            } catch (IOException e) {
+                log.error("IOException happened trying to move {}", file);
+                return false;
+            }
+        }
+
+        // move all the files from the temp folder back again
+        try {
+            moveFilesFromTempBack(folder);
+        } catch (IOException e) {
+            log.error("IOException caught while trying to get files from the temp folder back.");
+            return false;
         }
 
         return true;
@@ -190,6 +203,61 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         String suffix = oldFileName.substring(suffixIndex);
         String oldName = oldFileName.substring(0, suffixIndex);
         return namesMap.get(oldName).concat(suffix);
+    }
+
+    /**
+     * try to rename a file
+     * 
+     * @param filePath the Path of the file which is to be renamed
+     * @param newFileName the new name of the file
+     * @throws IOException
+     */
+    private void tryRenameFile(Path filePath, String newFileName) throws IOException {
+        Path targetPath = filePath.getParent().resolve(newFileName);
+        if (storageProvider.isFileExists(targetPath)) {
+            log.debug("targetPath is occupied: " + targetPath.toString());
+            log.debug("Moving the file " + newFileName + " to temp folder for the moment instead.");
+            // move files to a temp folder
+            moveFileToTempFolder(filePath, newFileName);
+        } else {
+            storageProvider.move(filePath, targetPath);
+        }
+    }
+
+    /**
+     * move files whose new names have conflictions with other files to a temp folder for the moment
+     * 
+     * @param filePath the Path of the file which is to be moved
+     * @param fileName the new name of this file
+     * @throws IOException
+     */
+    private void moveFileToTempFolder(Path filePath, String newFileName) throws IOException {
+        String tempFolder = "temp";
+        Path tempFolderPath = Paths.get(filePath.getParent().toString(), tempFolder);
+        if (!storageProvider.isFileExists(tempFolderPath)) {
+            storageProvider.createDirectories(tempFolderPath);
+        }
+        storageProvider.move(filePath, tempFolderPath.resolve(newFileName));
+    }
+
+    /**
+     * move files back from the temp folder
+     * 
+     * @param folderPath the Path of the folder whose files have just been renamed
+     * @throws IOException
+     */
+    private void moveFilesFromTempBack(String folder) throws IOException {
+        String tempFolder = "temp";
+        Path tempFolderPath = Paths.get(folder, tempFolder);
+        if (storageProvider.isFileExists(tempFolderPath)) {
+            log.debug("Moving files back from the temp folder: " + tempFolderPath.toString());
+            List<Path> files = storageProvider.listFiles(tempFolderPath.toString());
+            for (Path file : files) {
+                storageProvider.move(file, Paths.get(folder, file.getFileName().toString()));
+            }
+            storageProvider.deleteDir(tempFolderPath);
+            log.debug("Temp folder deleted: " + tempFolderPath.toString());
+        }
     }
 
     @Override
