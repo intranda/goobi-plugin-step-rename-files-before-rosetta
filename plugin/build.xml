@@ -9,7 +9,6 @@
 			<arg value="package"/>
 		</exec>
 		<copy file="module-main/target/plugin_intranda_step_${name}.jar" todir="/opt/digiverso/goobi/plugins/step/" overwrite="true"/>
-		<copy file="module-gui/target/plugin_intranda_step_${name}-GUI.jar" todir="/opt/digiverso/goobi/plugins/GUI/" overwrite="true"/>
 	</target>
 
 	<!-- Use this task to let configuration, plugin, user interface files and maven artifact be renamed to your plugin name -->
