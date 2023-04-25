@@ -4,7 +4,7 @@
   <artifactId>sample-main</artifactId>
   <version>1.0.0</version>
   <properties>
-    <jar.name>plugin_intranda_step_sample</jar.name>
+    <jar.name>plugin_intranda_step_rename_files_before_rosetta</jar.name>
     <dest.folder>/opt/digiverso/goobi/plugins/step/</dest.folder>
   </properties>
   <parent>

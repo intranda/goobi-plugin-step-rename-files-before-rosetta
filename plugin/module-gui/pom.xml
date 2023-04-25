@@ -4,7 +4,7 @@
   <artifactId>sample-gui</artifactId>
   <version>1.0.0</version>
   <properties>
-    <jar.name>plugin_intranda_step_sample-GUI</jar.name>
+    <jar.name>plugin_intranda_step_rename_files_before_rosetta-GUI</jar.name>
     <dest.folder>/opt/digiverso/goobi/plugins/GUI/</dest.folder>
   </properties>
   <parent>

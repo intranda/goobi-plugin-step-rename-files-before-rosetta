@@ -36,7 +36,7 @@ import net.xeoh.plugins.base.annotations.PluginImplementation;
 
 @PluginImplementation
 @Log4j2
-public class SampleStepPlugin implements IStepPluginVersion2 {
+public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     
     @Getter
     private String title = "intranda_step_sample";

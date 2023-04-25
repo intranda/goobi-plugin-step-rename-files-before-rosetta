@@ -1,7 +1,7 @@
 <project default="devbuild">
 
 	<!-- Simply set the name of the plugin here, e.g. "fileUpload" or "file_upload") instead of "sample" -->
-	<property name="name" value="sample" />
+	<property name="name" value="rename_files_before_rosetta" />
 
 	<!-- Use this task to let ant copy the compiled jar files to the target folders for development  -->
 	<target name="devbuild">
