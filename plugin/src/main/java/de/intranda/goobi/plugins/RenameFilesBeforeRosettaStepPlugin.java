@@ -148,11 +148,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         for (Path file : files) {
             // get new filename 
             String fileName = file.getFileName().toString();
-            int suffixIndex = fileName.lastIndexOf(".");
-            String suffix = fileName.substring(suffixIndex);
-            String oldName = fileName.substring(0, suffixIndex);
-            String newName = namesMap.get(oldName);
-            String newFileName = newName.concat(suffix);
+            String newFileName = getNewFileName(fileName, namesMap);
             // get new file path
             Path targetPath = file.getParent().resolve(newFileName);
             log.debug("targetPath = " + targetPath);
@@ -171,9 +167,10 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
                 String oldLocation = file.getLocation();
                 int fileNameStartIndex = oldLocation.lastIndexOf("/") + 1;
                 String locationPrefix = oldLocation.substring(0, fileNameStartIndex);
-                String oldName = oldLocation.substring(fileNameStartIndex);
-                String newName = namesMap.get(oldName);
-                String newLocation = locationPrefix.concat(newName);
+
+                String oldFileName = oldLocation.substring(fileNameStartIndex);
+                String newFileName = getNewFileName(oldFileName, namesMap);
+                String newLocation = locationPrefix.concat(newFileName);
                 file.setLocation(newLocation);
             }
 
@@ -186,6 +183,13 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
             e.printStackTrace();
             return false;
         }
+    }
+
+    private String getNewFileName(String oldFileName, Map<String, String> namesMap) {
+        int suffixIndex = oldFileName.lastIndexOf(".");
+        String suffix = oldFileName.substring(suffixIndex);
+        String oldName = oldFileName.substring(0, suffixIndex);
+        return namesMap.get(oldName).concat(suffix);
     }
 
     @Override
