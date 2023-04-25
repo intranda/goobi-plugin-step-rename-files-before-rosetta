@@ -1,7 +1,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>de.intranda.goobi.plugins.step</groupId>
-  <artifactId>sample-main</artifactId>
+  <artifactId>rename_files_before_rosetta-main</artifactId>
   <version>1.0.0</version>
   <properties>
     <jar.name>plugin_intranda_step_rename_files_before_rosetta</jar.name>
@@ -9,7 +9,7 @@
   </properties>
   <parent>
     <groupId>de.intranda.goobi.plugins.step</groupId>
-    <artifactId>sample</artifactId>
+    <artifactId>rename_files_before_rosetta</artifactId>
     <version>1.0.0</version>
   </parent>
   <build>
@@ -99,7 +99,7 @@
     </plugins>
   </build>
   <scm>
-    <url>scm:git:ssh://git@gitea.intranda.com:goobi-workflow/goobi-plugin-step-sample.git</url>
-    <connection>scm:git:ssh://git@gitea.intranda.com:goobi-workflow/goobi-plugin-step-sample.git</connection>
+    <url>scm:git:ssh://git@gitea.intranda.com:goobi-workflow/goobi-plugin-step-rename-files-before-rosetta-nli.git</url>
+    <connection>scm:git:ssh://git@gitea.intranda.com:goobi-workflow/goobi-plugin-step-rename-files-before-rosetta-nli.git</connection>
   </scm>
 </project>

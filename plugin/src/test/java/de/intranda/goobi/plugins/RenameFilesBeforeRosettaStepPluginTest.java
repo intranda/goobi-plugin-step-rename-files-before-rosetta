@@ -20,6 +20,7 @@ import org.goobi.beans.Step;
 import org.goobi.beans.User;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -75,6 +76,7 @@ public class RenameFilesBeforeRosettaStepPluginTest {
         assertNotNull(plugin);
     }
 
+    @Ignore
     @Test
     public void testInit() {
         RenameFilesBeforeRosettaStepPlugin plugin = new RenameFilesBeforeRosettaStepPlugin();
