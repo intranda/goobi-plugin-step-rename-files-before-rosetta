@@ -3,6 +3,7 @@ package de.intranda.goobi.plugins;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 
 /**
  * This file is part of a plugin for Goobi - a Workflow tool for the support of mass digitization.
@@ -39,6 +40,7 @@ import org.goobi.production.plugin.interfaces.IStepPluginVersion2;
 import de.sub.goobi.config.ConfigPlugins;
 import de.sub.goobi.helper.StorageProvider;
 import de.sub.goobi.helper.StorageProviderInterface;
+import de.sub.goobi.helper.exceptions.DAOException;
 import de.sub.goobi.helper.exceptions.SwapException;
 import lombok.Getter;
 import lombok.extern.log4j.Log4j2;
@@ -72,10 +74,6 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     private String newFileNamePrefix;
 
     private String derivateFolder;
-    private String altoFolder;
-    private String txtFolder;
-    private String pdfFolder;
-    private String xmlFolder;
 
     @Override
     public void initialize(Step step, String returnPath) {
@@ -91,16 +89,6 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         
         process = this.step.getProzess();
         initializeNewFileNamePrefix();
-        try {
-            derivateFolder = process.getImagesTifDirectory(false);
-            altoFolder = process.getOcrAltoDirectory();
-            txtFolder = process.getOcrTxtDirectory();
-            pdfFolder = process.getOcrPdfDirectory();
-            xmlFolder = process.getOcrXmlDirectory();
-        } catch (IOException | SwapException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
     }
 
     private void initializeNewFileNamePrefix() {
@@ -110,37 +98,101 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
 
     @Override
     public PluginReturnValue run() {
-        boolean successful = true;
-        // your logic goes here
-
-        log.info("rename_files_before_rosetta step plugin executed");
-
         // 1. create a Map from old names to new names
         Map<String, String> namesMap = createNamesMap();
 
         // 2. rename files in each folder with help of this Map
-        renameFilesInFolder(derivateFolder, namesMap);
+        boolean successful = !namesMap.isEmpty() && renameFiles(namesMap);
 
         // 3. update the Mets file
+        successful = successful && updateMetsFile(namesMap);
 
-        if (!successful) {
-            return PluginReturnValue.ERROR;
-        }
-        return PluginReturnValue.FINISH;
+        log.info("rename_files_before_rosetta step plugin executed");
+
+        return successful ? PluginReturnValue.FINISH : PluginReturnValue.ERROR;
     }
 
     private Map<String, String> createNamesMap() {
         Map<String, String> namesMap = new HashMap<>();
-        List<Path> files = storageProvider.listFiles(derivateFolder);
-        for (Path file : files) {
-            String fileName = file.getFileName().toString();
-            String oldName = fileName.substring(0, fileName.lastIndexOf("."));
-            // get new name based on this old name
-            String newName = newFileNamePrefix + "_" + oldName;
-            namesMap.put(oldName, newName);
+        boolean validDerivateFolder = checkDerivateFolder();
+        if (validDerivateFolder) {
+            List<Path> files = storageProvider.listFiles(derivateFolder);
+            for (Path file : files) {
+                String fileName = file.getFileName().toString();
+                String oldName = fileName.substring(0, fileName.lastIndexOf("."));
+                // get new name based on this old name
+                String newName = newFileNamePrefix + "_" + oldName;
+                namesMap.put(oldName, newName);
+            }
         }
 
         return namesMap;
+    }
+
+    private boolean checkDerivateFolder() {
+        try {
+            String masterFolder = process.getImagesOrigDirectory(false);
+            derivateFolder = process.getImagesTifDirectory(false);
+
+            return !masterFolder.equals(derivateFolder) && storageProvider.isFileExists(Path.of(derivateFolder));
+
+        } catch (IOException | SwapException | DAOException e) {
+            log.error("Errors Happened during the validity check of the derivate folder");
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private boolean renameFiles(Map<String, String> namesMap) {
+        List<String> folders = getFolderList();
+        boolean success = !folders.isEmpty();
+
+        // rename files in each folder
+        for (String folder : folders) {
+            success = success && renameFilesInFolder(folder, namesMap);
+        }
+
+        return success;
+    }
+
+    private List<String> getFolderList() {
+        List<String> folders = new ArrayList<String>();
+
+        try {
+            String altoFolder = process.getOcrAltoDirectory();
+            String pdfFolder = process.getOcrPdfDirectory();
+            String txtFolder = process.getOcrTxtDirectory();
+            String xmlFolder = process.getOcrXmlDirectory();
+
+            // existence of derivateFolder was already checked by the method checkDerivateFolder
+            log.debug("add derivateFolder: " + derivateFolder);
+            folders.add(derivateFolder);
+
+            if (storageProvider.isFileExists(Path.of(altoFolder))) {
+                log.debug("add altoFolder: " + altoFolder);
+                folders.add(altoFolder);
+            }
+
+            if (storageProvider.isFileExists(Path.of(pdfFolder))) {
+                log.debug("add pdfFolder: " + pdfFolder);
+                folders.add(pdfFolder);
+            }
+
+            if (storageProvider.isFileExists(Path.of(txtFolder))) {
+                log.debug("add txtFolder: " + txtFolder);
+                folders.add(txtFolder);
+            }
+
+            if (storageProvider.isFileExists(Path.of(xmlFolder))) {
+                log.debug("add xmlFolder: " + xmlFolder);
+                folders.add(xmlFolder);
+            }
+        } catch (IOException | SwapException e) {
+            log.error("Failed to get the folder list.");
+            e.printStackTrace();
+        }
+
+        return folders;
     }
 
     private boolean renameFilesInFolder(String folder, Map<String, String> namesMap) {
@@ -188,11 +240,10 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
             }
 
             process.writeMetadataFile(fileformat);
-
             return true;
 
         } catch (ReadException | IOException | SwapException | PreferencesException | WriteException e) {
-            // TODO Auto-generated catch block
+            log.error("Failed to update the Mets file.");
             e.printStackTrace();
             return false;
         }
