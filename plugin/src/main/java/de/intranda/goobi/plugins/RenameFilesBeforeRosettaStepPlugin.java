@@ -58,6 +58,8 @@ import ugh.exceptions.WriteException;
 @PluginImplementation
 @Log4j2
 public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
+    private static final String DEFAULT_FORMAT = "0000";
+    private static final String TEMP_FOLDER = "temp";
     
     @Getter
     private String title = "intranda_step_rename_files_before_rosetta";
@@ -67,18 +69,14 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     private String returnPath;
 
     private Process process;
-
+    // common prefix of the new file name
     private String newFileNamePrefix;
-
-    private transient StorageProviderInterface storageProvider = StorageProvider.getInstance();
-
+    // path as string of the media folder
     private String derivateFolder;
-
+    // format that will be used in the creation of new names
     private NumberFormat format;
 
-    private static final String DEFAULT_FORMAT = "0000";
-
-    private static final String TEMP_FOLDER = "temp";
+    private transient StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
     @Override
     public void initialize(Step step, String returnPath) {
@@ -116,6 +114,11 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         return successful ? PluginReturnValue.FINISH : PluginReturnValue.ERROR;
     }
 
+    /**
+     * create a Map from old names to new names
+     * 
+     * @return a Map from old names to new names
+     */
     private Map<String, String> createNamesMap() {
         Map<String, String> namesMap = new HashMap<>();
         boolean validDerivateFolder = checkDerivateFolder();
@@ -145,6 +148,11 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         return namesMap;
     }
 
+    /**
+     * checks if the derivate folder is valid, that is if the derivate folder is different from the master folder AND it actually exists
+     * 
+     * @return true if the derivate folder is valid, false otherwise OR any Exceptions occurs
+     */
     private boolean checkDerivateFolder() {
         try {
             String masterFolder = process.getImagesOrigDirectory(false);
@@ -159,6 +167,12 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         }
     }
 
+    /**
+     * checks if the configured format has enough digits for keeping at most n files' names of equal lengths
+     * 
+     * @param n the total number of files that should be renamed
+     * @return true if the configured format has enough digits, false otherwise
+     */
     private boolean checkFormat(int n) {
         String format_0 = format.format(0); // NOSONAR
         String format_n = format.format(n); // NOSONAR
@@ -166,15 +180,25 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         return format_0.length() == format_n.length();
     }
 
-    private String createNewName(int count) {
-        String formatedNumber = format.format(count);
+    /**
+     * create a new name given the order of the file
+     * 
+     * @param order the order of the file among all files
+     * @return {newFileNamePrefix}_{the formated order}
+     */
+    private String createNewName(int order) {
+        String formatedNumber = format.format(order);
         String newName = newFileNamePrefix + "_" + formatedNumber;
-
-        log.debug("newName = " + newName);
 
         return newName;
     }
 
+    /**
+     * rename all files that are relevant
+     * 
+     * @param namesMap Map from old names to new names
+     * @return true if all relevant files are successfully renamed, false otherwise
+     */
     private boolean renameFiles(Map<String, String> namesMap) {
         List<String> folders = getFolderList();
         boolean success = !folders.isEmpty();
@@ -187,6 +211,11 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         return success;
     }
 
+    /**
+     * get a list of folders whose files would be renamed
+     * 
+     * @return the list of folders whose files would be renamed, or an empty list if any error should occur
+     */
     private List<String> getFolderList() {
         List<String> folders = new ArrayList<>();
 
@@ -227,6 +256,13 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         return folders;
     }
 
+    /**
+     * rename all files in the given folder
+     * 
+     * @param folder path as string of the folder
+     * @param namesMap Map from old names to new names
+     * @return true if all files in the given folder are successfully renamed, false otherwise
+     */
     private boolean renameFilesInFolder(String folder, Map<String, String> namesMap) {
         List<Path> files = storageProvider.listFiles(folder);
 
@@ -254,6 +290,13 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         return true;
     }
 
+    /**
+     * get the new file name given the old one
+     * 
+     * @param oldFileName the old file name, including the file suffix
+     * @param namesMap Map from old names to new names
+     * @return the new file name including the file suffix
+     */
     private String getNewFileName(String oldFileName, Map<String, String> namesMap) {
         int suffixIndex = oldFileName.lastIndexOf(".");
         String suffix = oldFileName.substring(suffixIndex);
@@ -281,10 +324,10 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     }
 
     /**
-     * move files whose new names have conflictions with other files to a temp folder for the moment
+     * move files whose new names have conflicts with other files to a temp folder for the moment
      * 
      * @param filePath the Path of the file which is to be moved
-     * @param fileName the new name of this file
+     * @param newFileName the new name of this file
      * @throws IOException
      */
     private void moveFileToTempFolder(Path filePath, String newFileName) throws IOException {
@@ -298,7 +341,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     /**
      * move files back from the temp folder
      * 
-     * @param folderPath the Path of the folder whose files have just been renamed
+     * @param folder the path as string of the folder whose files have just been renamed
      * @throws IOException
      */
     private void moveFilesFromTempBack(String folder) throws IOException {
@@ -314,6 +357,12 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         }
     }
 
+    /**
+     * update information of ContentFiles' locations in the METS file
+     * 
+     * @param namesMap Map from old names to new names
+     * @return true if the METS file is updated successfully, false if any error should occur
+     */
     private boolean updateMetsFile(Map<String, String> namesMap) {
         try {
             Fileformat fileformat = process.readMetadataFile();
