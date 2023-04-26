@@ -142,7 +142,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
             Path file = files.get(i);
             String fileName = file.getFileName().toString();
             String oldName = fileName.substring(0, fileName.lastIndexOf("."));
-            // get new name based on this old name
+            // get new name based on the order of this file
             String newName = createNewName(i + 1);
             namesMap.put(oldName, newName);
         }
@@ -176,12 +176,6 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         String newName = newFileNamePrefix + "_" + formatedNumber;
 
         log.debug("newName = " + newName);
-
-        return newName;
-    }
-
-    private String createNewName(String oldName) {
-        String newName = newFileNamePrefix + "_" + oldName;
 
         return newName;
     }
