@@ -71,7 +71,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
 
     private StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
-    private String newFileNamePrefix;
+    //    private String newFileNamePrefix;
 
     private String derivateFolder;
 
@@ -88,13 +88,13 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         log.debug("value = " + value);
         
         process = this.step.getProzess();
-        initializeNewFileNamePrefix();
+        //        initializeNewFileNamePrefix();
     }
 
-    private void initializeNewFileNamePrefix() {
-        String processTitle = process.getTitel();
-        newFileNamePrefix = processTitle.substring(processTitle.indexOf("_") + 1);
-    }
+    //    private void initializeNewFileNamePrefix() {
+    //        String processTitle = process.getTitel();
+    //        newFileNamePrefix = processTitle.substring(processTitle.indexOf("_") + 1);
+    //    }
 
     @Override
     public PluginReturnValue run() {
@@ -121,12 +121,20 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
                 String fileName = file.getFileName().toString();
                 String oldName = fileName.substring(0, fileName.lastIndexOf("."));
                 // get new name based on this old name
-                String newName = newFileNamePrefix + "_" + oldName;
+                String newName = createNewName(oldName);
                 namesMap.put(oldName, newName);
             }
         }
 
         return namesMap;
+    }
+
+    private String createNewName(String oldName) {
+        String processTitle = process.getTitel();
+        String newFileNamePrefix = processTitle.substring(processTitle.indexOf("_") + 1);
+        String newName = newFileNamePrefix + "_" + oldName;
+
+        return newName;
     }
 
     private boolean checkDerivateFolder() {
