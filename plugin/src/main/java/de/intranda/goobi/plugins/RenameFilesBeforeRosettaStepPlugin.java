@@ -3,6 +3,8 @@ package de.intranda.goobi.plugins;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.ArrayList;
 
 /**
@@ -62,18 +64,20 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     @Getter
     private Step step;
     @Getter
-    private String value;
+    private int value;
     @Getter 
     private boolean allowTaskFinishButtons;
     private String returnPath;
 
     private Process process;
 
+    private String newFileNamePrefix;
+
     private StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
-    //    private String newFileNamePrefix;
-
     private String derivateFolder;
+
+    private NumberFormat format;
 
     @Override
     public void initialize(Step step, String returnPath) {
@@ -81,25 +85,30 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         this.step = step;
                 
         // read parameters from correct block in configuration file
-        SubnodeConfiguration myconfig = ConfigPlugins.getProjectAndStepConfig(title, step);
-        value = myconfig.getString("value", "default value"); 
-        allowTaskFinishButtons = myconfig.getBoolean("allowTaskFinishButtons", false);
+        SubnodeConfiguration config = ConfigPlugins.getProjectAndStepConfig(title, step);
+        value = config.getInt("value", 1999);
+        allowTaskFinishButtons = config.getBoolean("allowTaskFinishButtons", false);
         log.info("rename_files_before_rosetta step plugin initialized");
         log.debug("value = " + value);
-        
-        process = this.step.getProzess();
-        //        initializeNewFileNamePrefix();
-    }
 
-    //    private void initializeNewFileNamePrefix() {
-    //        String processTitle = process.getTitel();
-    //        newFileNamePrefix = processTitle.substring(processTitle.indexOf("_") + 1);
-    //    }
+        String formatFlag = config.getString("format");
+        log.debug("formatFlag = " + formatFlag);
+        format = new DecimalFormat(formatFlag);
+        log.debug(format.format(value));
+
+        log.debug("maximum integer digits = " + format.getMaximumIntegerDigits());
+        log.debug("minimum integer digits = " + format.getMinimumIntegerDigits());
+
+        process = this.step.getProzess();
+        String processTitle = process.getTitel();
+        newFileNamePrefix = processTitle.substring(processTitle.indexOf("_") + 1);
+    }
 
     @Override
     public PluginReturnValue run() {
         // 1. create a Map from old names to new names
         Map<String, String> namesMap = createNamesMap();
+        //        namesMap = new HashMap<>();
 
         // 2. rename files in each folder with help of this Map
         boolean successful = !namesMap.isEmpty() && renameFiles(namesMap);
@@ -117,24 +126,23 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         boolean validDerivateFolder = checkDerivateFolder();
         if (validDerivateFolder) {
             List<Path> files = storageProvider.listFiles(derivateFolder);
-            for (Path file : files) {
-                String fileName = file.getFileName().toString();
-                String oldName = fileName.substring(0, fileName.lastIndexOf("."));
-                // get new name based on this old name
-                String newName = createNewName(oldName);
-                namesMap.put(oldName, newName);
+            boolean validFormat = checkFormat(files.size());
+            log.debug("format is {}valid", validFormat ? "" : "in");
+            if (!validFormat) {
+                log.error("The configured format does not have enough digits. Please adjust it.");
+            } else {
+                for (int i = 0; i < files.size(); ++i) {
+                    Path file = files.get(i);
+                    String fileName = file.getFileName().toString();
+                    String oldName = fileName.substring(0, fileName.lastIndexOf("."));
+                    // get new name based on this old name
+                    String newName = createNewName(i + 1);
+                    namesMap.put(oldName, newName);
+                }
             }
         }
 
         return namesMap;
-    }
-
-    private String createNewName(String oldName) {
-        String processTitle = process.getTitel();
-        String newFileNamePrefix = processTitle.substring(processTitle.indexOf("_") + 1);
-        String newName = newFileNamePrefix + "_" + oldName;
-
-        return newName;
     }
 
     private boolean checkDerivateFolder() {
@@ -149,6 +157,31 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
             e.printStackTrace();
             return false;
         }
+    }
+
+    private boolean checkFormat(int n) {
+        String format_0 = format.format(0);
+        String format_n = format.format(n);
+        log.debug("format 0 = " + format_0);
+        log.debug("format n = " + format_n);
+
+        return format_0.length() == format_n.length();
+
+    }
+
+    private String createNewName(int count) {
+        String formatedNumber = format.format(count);
+        String newName = newFileNamePrefix + "_" + formatedNumber;
+
+        log.debug("newName = " + newName);
+
+        return newName;
+    }
+
+    private String createNewName(String oldName) {
+        String newName = newFileNamePrefix + "_" + oldName;
+
+        return newName;
     }
 
     private boolean renameFiles(Map<String, String> namesMap) {
