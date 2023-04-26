@@ -124,22 +124,27 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     private Map<String, String> createNamesMap() {
         Map<String, String> namesMap = new HashMap<>();
         boolean validDerivateFolder = checkDerivateFolder();
-        if (validDerivateFolder) {
-            List<Path> files = storageProvider.listFiles(derivateFolder);
-            boolean validFormat = checkFormat(files.size());
-            log.debug("format is {}valid", validFormat ? "" : "in");
-            if (!validFormat) {
-                log.error("The configured format does not have enough digits. Please adjust it.");
-            } else {
-                for (int i = 0; i < files.size(); ++i) {
-                    Path file = files.get(i);
-                    String fileName = file.getFileName().toString();
-                    String oldName = fileName.substring(0, fileName.lastIndexOf("."));
-                    // get new name based on this old name
-                    String newName = createNewName(i + 1);
-                    namesMap.put(oldName, newName);
-                }
-            }
+        if (!validDerivateFolder) {
+            return namesMap;
+        }
+
+        // derivate folder is valid
+        List<Path> files = storageProvider.listFiles(derivateFolder);
+        boolean validFormat = checkFormat(files.size());
+        log.debug("format is {}valid", validFormat ? "" : "in");
+        if (!validFormat) {
+            log.error("The configured format does not have enough digits. Please adjust it.");
+            return namesMap;
+        }
+
+        // format is also valid
+        for (int i = 0; i < files.size(); ++i) {
+            Path file = files.get(i);
+            String fileName = file.getFileName().toString();
+            String oldName = fileName.substring(0, fileName.lastIndexOf("."));
+            // get new name based on this old name
+            String newName = createNewName(i + 1);
+            namesMap.put(oldName, newName);
         }
 
         return namesMap;
@@ -162,11 +167,8 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     private boolean checkFormat(int n) {
         String format_0 = format.format(0);
         String format_n = format.format(n);
-        log.debug("format 0 = " + format_0);
-        log.debug("format n = " + format_n);
 
         return format_0.length() == format_n.length();
-
     }
 
     private String createNewName(int count) {
