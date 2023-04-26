@@ -2,7 +2,6 @@ package de.intranda.goobi.plugins;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -71,13 +70,15 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
 
     private String newFileNamePrefix;
 
-    private StorageProviderInterface storageProvider = StorageProvider.getInstance();
+    private transient StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
     private String derivateFolder;
 
     private NumberFormat format;
 
     private static final String DEFAULT_FORMAT = "0000";
+
+    private static final String TEMP_FOLDER = "temp";
 
     @Override
     public void initialize(Step step, String returnPath) {
@@ -96,13 +97,14 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         process = this.step.getProzess();
         String processTitle = process.getTitel();
         newFileNamePrefix = processTitle.substring(processTitle.indexOf("_") + 1);
+        
+        log.info("rename_files_before_rosetta step plugin initialized");
     }
 
     @Override
     public PluginReturnValue run() {
         // 1. create a Map from old names to new names
         Map<String, String> namesMap = createNamesMap();
-        //        namesMap = new HashMap<>();
 
         // 2. rename files in each folder with help of this Map
         boolean successful = !namesMap.isEmpty() && renameFiles(namesMap);
@@ -111,7 +113,6 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         successful = successful && updateMetsFile(namesMap);
 
         log.info("rename_files_before_rosetta step plugin executed");
-
         return successful ? PluginReturnValue.FINISH : PluginReturnValue.ERROR;
     }
 
@@ -159,8 +160,8 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     }
 
     private boolean checkFormat(int n) {
-        String format_0 = format.format(0);
-        String format_n = format.format(n);
+        String format_0 = format.format(0); // NOSONAR
+        String format_n = format.format(n); // NOSONAR
 
         return format_0.length() == format_n.length();
     }
@@ -187,7 +188,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     }
 
     private List<String> getFolderList() {
-        List<String> folders = new ArrayList<String>();
+        List<String> folders = new ArrayList<>();
 
         try {
             String altoFolder = process.getOcrAltoDirectory();
@@ -231,8 +232,8 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
 
         for (Path file : files) {
             // get new filename 
-            String fileName = file.getFileName().toString();
-            String newFileName = getNewFileName(fileName, namesMap);
+            String oldFileName = file.getFileName().toString();
+            String newFileName = getNewFileName(oldFileName, namesMap);
 
             try {
                 tryRenameFile(file, newFileName);
@@ -251,33 +252,6 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         }
 
         return true;
-    }
-
-    private boolean updateMetsFile(Map<String, String> namesMap) {
-        try {
-            Fileformat fileformat = process.readMetadataFile();
-            DigitalDocument dd = fileformat.getDigitalDocument();
-            FileSet fileSet = dd.getFileSet();
-            List<ContentFile> filesList = fileSet.getAllFiles();
-            for (ContentFile file : filesList) {
-                String oldLocation = file.getLocation();
-                int fileNameStartIndex = oldLocation.lastIndexOf("/") + 1;
-                String locationPrefix = oldLocation.substring(0, fileNameStartIndex);
-
-                String oldFileName = oldLocation.substring(fileNameStartIndex);
-                String newFileName = getNewFileName(oldFileName, namesMap);
-                String newLocation = locationPrefix.concat(newFileName);
-                file.setLocation(newLocation);
-            }
-
-            process.writeMetadataFile(fileformat);
-            return true;
-
-        } catch (ReadException | IOException | SwapException | PreferencesException | WriteException e) {
-            log.error("Failed to update the Mets file.");
-            e.printStackTrace();
-            return false;
-        }
     }
 
     private String getNewFileName(String oldFileName, Map<String, String> namesMap) {
@@ -314,8 +288,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
      * @throws IOException
      */
     private void moveFileToTempFolder(Path filePath, String newFileName) throws IOException {
-        String tempFolder = "temp";
-        Path tempFolderPath = Paths.get(filePath.getParent().toString(), tempFolder);
+        Path tempFolderPath = Path.of(filePath.getParent().toString(), TEMP_FOLDER);
         if (!storageProvider.isFileExists(tempFolderPath)) {
             storageProvider.createDirectories(tempFolderPath);
         }
@@ -329,25 +302,48 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
      * @throws IOException
      */
     private void moveFilesFromTempBack(String folder) throws IOException {
-        String tempFolder = "temp";
-        Path tempFolderPath = Paths.get(folder, tempFolder);
+        Path tempFolderPath = Path.of(folder, TEMP_FOLDER);
         if (storageProvider.isFileExists(tempFolderPath)) {
             log.debug("Moving files back from the temp folder: " + tempFolderPath.toString());
             List<Path> files = storageProvider.listFiles(tempFolderPath.toString());
             for (Path file : files) {
-                storageProvider.move(file, Paths.get(folder, file.getFileName().toString()));
+                storageProvider.move(file, Path.of(folder, file.getFileName().toString()));
             }
             storageProvider.deleteDir(tempFolderPath);
             log.debug("Temp folder deleted: " + tempFolderPath.toString());
         }
     }
 
+    private boolean updateMetsFile(Map<String, String> namesMap) {
+        try {
+            Fileformat fileformat = process.readMetadataFile();
+            DigitalDocument dd = fileformat.getDigitalDocument();
+            FileSet fileSet = dd.getFileSet();
+            List<ContentFile> filesList = fileSet.getAllFiles();
+            for (ContentFile file : filesList) {
+                String oldLocation = file.getLocation();
+                int fileNameStartIndex = oldLocation.lastIndexOf("/") + 1;
+                String locationPrefix = oldLocation.substring(0, fileNameStartIndex);
+
+                String oldFileName = oldLocation.substring(fileNameStartIndex);
+                String newFileName = getNewFileName(oldFileName, namesMap);
+                String newLocation = locationPrefix.concat(newFileName);
+                file.setLocation(newLocation);
+            }
+
+            process.writeMetadataFile(fileformat);
+            return true;
+
+        } catch (ReadException | IOException | SwapException | PreferencesException | WriteException e) {
+            log.error("Failed to update the Mets file.");
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     @Override
     public PluginGuiType getPluginGuiType() {
-        return PluginGuiType.FULL;
-        // return PluginGuiType.PART;
-        // return PluginGuiType.PART_AND_FULL;
-        // return PluginGuiType.NONE;
+        return PluginGuiType.NONE;
     }
 
     @Override
@@ -377,7 +373,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
 
     @Override
     public HashMap<String, StepReturnValue> validate() {
-        return null;
+        return null; // NOSONAR
     }
     
     @Override
