@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.configuration.SubnodeConfiguration;
+import org.apache.commons.lang.StringUtils;
 import org.goobi.beans.Process;
 import org.goobi.beans.Step;
 import org.goobi.production.enums.PluginGuiType;
@@ -63,10 +64,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     private String title = "intranda_step_rename_files_before_rosetta";
     @Getter
     private Step step;
-    @Getter
-    private int value;
-    @Getter 
-    private boolean allowTaskFinishButtons;
+
     private String returnPath;
 
     private Process process;
@@ -79,6 +77,8 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
 
     private NumberFormat format;
 
+    private static final String DEFAULT_FORMAT = "0000";
+
     @Override
     public void initialize(Step step, String returnPath) {
         this.returnPath = returnPath;
@@ -86,18 +86,12 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
                 
         // read parameters from correct block in configuration file
         SubnodeConfiguration config = ConfigPlugins.getProjectAndStepConfig(title, step);
-        value = config.getInt("value", 1999);
-        allowTaskFinishButtons = config.getBoolean("allowTaskFinishButtons", false);
-        log.info("rename_files_before_rosetta step plugin initialized");
-        log.debug("value = " + value);
 
         String formatFlag = config.getString("format");
-        log.debug("formatFlag = " + formatFlag);
+        if (StringUtils.isBlank(formatFlag)) {
+            formatFlag = DEFAULT_FORMAT;
+        }
         format = new DecimalFormat(formatFlag);
-        log.debug(format.format(value));
-
-        log.debug("maximum integer digits = " + format.getMaximumIntegerDigits());
-        log.debug("minimum integer digits = " + format.getMinimumIntegerDigits());
 
         process = this.step.getProzess();
         String processTitle = process.getTitel();
