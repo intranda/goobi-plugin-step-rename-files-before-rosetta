@@ -42,6 +42,7 @@ import org.goobi.production.plugin.interfaces.IStepPluginVersion2;
 import de.sub.goobi.config.ConfigPlugins;
 import de.sub.goobi.helper.StorageProvider;
 import de.sub.goobi.helper.StorageProviderInterface;
+import de.sub.goobi.helper.VariableReplacer;
 import de.sub.goobi.helper.exceptions.DAOException;
 import de.sub.goobi.helper.exceptions.SwapException;
 import lombok.Getter;
@@ -75,6 +76,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     private String derivateFolder;
     // format that will be used in the creation of new names
     private NumberFormat format;
+    private VariableReplacer variableReplacer;
 
     private transient StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
@@ -82,6 +84,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     public void initialize(Step step, String returnPath) {
         this.returnPath = returnPath;
         this.step = step;
+        this.variableReplacer = createVariableReplacer(step.getProzess());
                 
         // read parameters from correct block in configuration file
         SubnodeConfiguration config = ConfigPlugins.getProjectAndStepConfig(title, step);
@@ -91,12 +94,37 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
             formatFlag = DEFAULT_FORMAT;
         }
         format = new DecimalFormat(formatFlag);
+        
+        String configuredMainImagesPath = config.getString("mainImageFolder", "{tifpath}");
+        if(StringUtils.isNotBlank(configuredMainImagesPath) && variableReplacer != null) {
+            derivateFolder = this.variableReplacer.replace(configuredMainImagesPath);
+        } else {
+            try {
+                derivateFolder = process.getImagesTifDirectory(false);
+            } catch (IOException | SwapException e) {
+                log.error("Error getting image folder for process {}: {}", process.getId(), e.toString());
+                derivateFolder = null;
+            }
+        }
+        
 
         process = this.step.getProzess();
         String processTitle = process.getTitel();
         newFileNamePrefix = processTitle.substring(processTitle.indexOf("_") + 1);
         
         log.info("rename_files_before_rosetta step plugin initialized");
+    }
+    
+    private VariableReplacer createVariableReplacer(Process process) {
+        try {
+            Fileformat fileformat = process.readMetadataFile();
+            return new VariableReplacer(fileformat != null ? fileformat.getDigitalDocument() : null,
+                    process.getRegelsatz().getPreferences(), process, step);
+        } catch (ReadException | IOException | SwapException | PreferencesException e1) {
+            log.error("Errors happened while trying to initialize the Fileformat and VariableReplacer.");
+            log.error(e1);
+            return null;
+        }
     }
 
     @Override
@@ -156,7 +184,6 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     private boolean checkDerivateFolder() {
         try {
             String masterFolder = process.getImagesOrigDirectory(false);
-            derivateFolder = process.getImagesTifDirectory(false);
 
             return !masterFolder.equals(derivateFolder) && storageProvider.isFileExists(Path.of(derivateFolder));
 
