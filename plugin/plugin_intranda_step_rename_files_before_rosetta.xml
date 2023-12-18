@@ -15,6 +15,13 @@
         <!-- format that should be used to create new names -->
         <!-- expected here is a string consisting of only 0s, and if it's not set, then the DEFAULT setting 0000 will be used-->
         <format>0000</format>
+        
+        <!-- The folder containing the main image list. All files in other folders (ocr and additional folders) are renamed based on the files in this folder
+        Goobi variables may be used -->
+        <mainImageFolder>{tifpath}</mainImageFolder>
+          
+        <!-- The given folder is also parsed for files named like those in mainImageFolder which are renamed with the same schema as those in mainImageFolder -->     
+        <additionalFolder>{processpath}/images/{processtitle}_jpg</additionalFolder>
     </config>
 
 </config_plugin>

@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Date;
 
 /**
  * This file is part of a plugin for Goobi - a Workflow tool for the support of mass digitization.
@@ -28,16 +29,22 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.apache.commons.configuration.SubnodeConfiguration;
 import org.apache.commons.lang.StringUtils;
+import org.goobi.beans.JournalEntry;
 import org.goobi.beans.Process;
 import org.goobi.beans.Step;
+import org.goobi.beans.JournalEntry.EntryType;
+import org.goobi.production.enums.LogType;
 import org.goobi.production.enums.PluginGuiType;
 import org.goobi.production.enums.PluginReturnValue;
 import org.goobi.production.enums.PluginType;
 import org.goobi.production.enums.StepReturnValue;
 import org.goobi.production.plugin.interfaces.IStepPluginVersion2;
+
+import com.jcabi.log.Logger;
 
 import de.sub.goobi.config.ConfigPlugins;
 import de.sub.goobi.helper.StorageProvider;
@@ -45,6 +52,7 @@ import de.sub.goobi.helper.StorageProviderInterface;
 import de.sub.goobi.helper.VariableReplacer;
 import de.sub.goobi.helper.exceptions.DAOException;
 import de.sub.goobi.helper.exceptions.SwapException;
+import de.sub.goobi.persistence.managers.JournalManager;
 import lombok.Getter;
 import lombok.extern.log4j.Log4j2;
 import net.xeoh.plugins.base.annotations.PluginImplementation;
@@ -61,7 +69,7 @@ import ugh.exceptions.WriteException;
 public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     private static final String DEFAULT_FORMAT = "0000";
     private static final String TEMP_FOLDER = "temp";
-    
+
     @Getter
     private String title = "intranda_step_rename_files_before_rosetta";
     @Getter
@@ -77,6 +85,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     // format that will be used in the creation of new names
     private NumberFormat format;
     private VariableReplacer variableReplacer;
+    private SubnodeConfiguration config;
 
     private transient StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
@@ -85,18 +94,18 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         this.returnPath = returnPath;
         this.step = step;
         this.variableReplacer = createVariableReplacer(step.getProzess());
-                
+
         // read parameters from correct block in configuration file
-        SubnodeConfiguration config = ConfigPlugins.getProjectAndStepConfig(title, step);
+        config = ConfigPlugins.getProjectAndStepConfig(title, step);
 
         String formatFlag = config.getString("format");
         if (StringUtils.isBlank(formatFlag)) {
             formatFlag = DEFAULT_FORMAT;
         }
         format = new DecimalFormat(formatFlag);
-        
+
         String configuredMainImagesPath = config.getString("mainImageFolder", "{tifpath}");
-        if(StringUtils.isNotBlank(configuredMainImagesPath) && variableReplacer != null) {
+        if (StringUtils.isNotBlank(configuredMainImagesPath) && variableReplacer != null) {
             derivateFolder = this.variableReplacer.replace(configuredMainImagesPath);
         } else {
             try {
@@ -106,15 +115,14 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
                 derivateFolder = null;
             }
         }
-        
 
         process = this.step.getProzess();
         String processTitle = process.getTitel();
         newFileNamePrefix = processTitle.substring(processTitle.indexOf("_") + 1);
-        
+
         log.info("rename_files_before_rosetta step plugin initialized");
     }
-    
+
     private VariableReplacer createVariableReplacer(Process process) {
         try {
             Fileformat fileformat = process.readMetadataFile();
@@ -130,16 +138,40 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     @Override
     public PluginReturnValue run() {
         // 1. create a Map from old names to new names
+        boolean validDerivateFolder = checkDerivateFolder();
+        if (!validDerivateFolder) {
+            String message = String.format(
+                    "Error renaming files: Base images folder configured as %s, but no folder of that name found or accessible", this.derivateFolder);
+            log.error("Error in step {} in process {}: {}", this.step.getTitel(), this.process.getTitel(), message);
+            writeJournalEntry(message, LogType.ERROR);
+            return PluginReturnValue.ERROR;
+        }
         Map<String, String> namesMap = createNamesMap();
+        if (namesMap.isEmpty()) {
+            String message = String.format("Error renaming files: Base images folder configured as %s, but no image files found in that folder",
+                    this.derivateFolder);
+            log.error("Error in step {} in process {}: {}", this.step.getTitel(), this.process.getTitel(), message);
+            writeJournalEntry(message, LogType.ERROR);
+            return PluginReturnValue.ERROR;
+        }
 
-        // 2. rename files in each folder with help of this Map
-        boolean successful = !namesMap.isEmpty() && renameFiles(namesMap);
-
-        // 3. update the Mets file
-        successful = successful && updateMetsFile(namesMap);
+        try {
+            // 2. rename files in each folder with help of this Map
+            renameFiles(namesMap);
+            
+            // 3. update the Mets file
+            updateMetsFile(namesMap);
+            
+        } catch(IOException e) {
+            String message = String.format("Error renaming files: %s", e.toString());
+            log.error("Error in step {} in process {}: {}", this.step.getTitel(), this.process.getTitel(), message);
+            writeJournalEntry(message, LogType.ERROR);
+            return PluginReturnValue.ERROR;
+        }
 
         log.info("rename_files_before_rosetta step plugin executed");
-        return successful ? PluginReturnValue.FINISH : PluginReturnValue.ERROR;
+        writeJournalEntry("rename_files_before_rosetta step plugin executed", LogType.INFO);
+        return PluginReturnValue.FINISH;
     }
 
     /**
@@ -149,10 +181,6 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
      */
     private Map<String, String> createNamesMap() {
         Map<String, String> namesMap = new HashMap<>();
-        boolean validDerivateFolder = checkDerivateFolder();
-        if (!validDerivateFolder) {
-            return namesMap;
-        }
 
         // derivate folder is valid
         List<Path> files = storageProvider.listFiles(derivateFolder);
@@ -225,25 +253,25 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
      * 
      * @param namesMap Map from old names to new names
      * @return true if all relevant files are successfully renamed, false otherwise
+     * @throws IOException 
      */
-    private boolean renameFiles(Map<String, String> namesMap) {
+    private void renameFiles(Map<String, String> namesMap) throws IOException {
         List<String> folders = getFolderList();
-        boolean success = !folders.isEmpty();
 
         // rename files in each folder
         for (String folder : folders) {
-            success = success && renameFilesInFolder(folder, namesMap);
+            int filesRenamed = renameFilesInFolder(folder, namesMap);
+            writeJournalEntry(String.format("renamed %s files in %s", filesRenamed, folder), LogType.DEBUG);
         }
 
-        return success;
     }
 
     /**
-     * get a list of folders whose files would be renamed
+     * get a list of folders whose files would be renamed. The list is never empty in normal plugin workflow, since it always contains at least the {@link #derivateFolder}
      * 
      * @return the list of folders whose files would be renamed, or an empty list if any error should occur
      */
-    private List<String> getFolderList() {
+    private List<String> getFolderList() throws IOException {
         List<String> folders = new ArrayList<>();
 
         try {
@@ -251,6 +279,11 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
             String pdfFolder = process.getOcrPdfDirectory();
             String txtFolder = process.getOcrTxtDirectory();
             String xmlFolder = process.getOcrXmlDirectory();
+            
+            List<String> additionalFolders = config.getList("additionalFolder").stream()
+                    .filter(String.class::isInstance).map(String.class::cast)
+                    .map(f -> this.variableReplacer == null ? f : this.variableReplacer.replace(f)).collect(Collectors.toList());
+            
 
             // existence of derivateFolder was already checked by the method checkDerivateFolder
             log.debug("add derivateFolder: " + derivateFolder);
@@ -275,9 +308,14 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
                 log.debug("add xmlFolder: " + xmlFolder);
                 folders.add(xmlFolder);
             }
-        } catch (IOException | SwapException e) {
-            log.error("Failed to get the folder list.");
-            e.printStackTrace();
+            
+            for (String folderPath : additionalFolders) {
+                log.debug("add additionalFolder: " + folderPath);
+                folders.add(folderPath);
+            }
+            
+        } catch (SwapException e) {
+            throw new IOException(e);
         }
 
         return folders;
@@ -289,32 +327,23 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
      * @param folder path as string of the folder
      * @param namesMap Map from old names to new names
      * @return true if all files in the given folder are successfully renamed, false otherwise
+     * @throws IOException 
      */
-    private boolean renameFilesInFolder(String folder, Map<String, String> namesMap) {
+    private int renameFilesInFolder(String folder, Map<String, String> namesMap) throws IOException {
         List<Path> files = storageProvider.listFiles(folder);
-
+        int filesRenamed = 0;
         for (Path file : files) {
             // get new filename 
             String oldFileName = file.getFileName().toString();
             String newFileName = getNewFileName(oldFileName, namesMap);
 
-            try {
-                tryRenameFile(file, newFileName);
-            } catch (IOException e) {
-                log.error("IOException happened trying to move {}", file);
-                return false;
-            }
+            tryRenameFile(file, newFileName);
+            filesRenamed++;
         }
 
         // move all the files from the temp folder back again
-        try {
-            moveFilesFromTempBack(folder);
-        } catch (IOException e) {
-            log.error("IOException caught while trying to get files from the temp folder back.");
-            return false;
-        }
-
-        return true;
+        moveFilesFromTempBack(folder);
+        return filesRenamed;
     }
 
     /**
@@ -328,7 +357,11 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
         int suffixIndex = oldFileName.lastIndexOf(".");
         String suffix = oldFileName.substring(suffixIndex);
         String oldName = oldFileName.substring(0, suffixIndex);
-        return namesMap.get(oldName).concat(suffix);
+        if(namesMap.containsKey(oldName)) {            
+            return namesMap.get(oldName).concat(suffix);
+        } else {
+            return oldFileName;
+        }
     }
 
     /**
@@ -390,7 +423,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
      * @param namesMap Map from old names to new names
      * @return true if the METS file is updated successfully, false if any error should occur
      */
-    private boolean updateMetsFile(Map<String, String> namesMap) {
+    private void updateMetsFile(Map<String, String> namesMap) throws IOException {
         try {
             Fileformat fileformat = process.readMetadataFile();
             DigitalDocument dd = fileformat.getDigitalDocument();
@@ -408,12 +441,9 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
             }
 
             process.writeMetadataFile(fileformat);
-            return true;
 
         } catch (ReadException | IOException | SwapException | PreferencesException | WriteException e) {
-            log.error("Failed to update the Mets file.");
-            e.printStackTrace();
-            return false;
+            throw new IOException("Error writing updated filenames to meta.xml of process " + process.getTitel() + ": " + e.toString(), e);
         }
     }
 
@@ -441,7 +471,7 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     public String finish() {
         return "/uii" + returnPath;
     }
-    
+
     @Override
     public int getInterfaceVersion() {
         return 0;
@@ -451,11 +481,16 @@ public class RenameFilesBeforeRosettaStepPlugin implements IStepPluginVersion2 {
     public HashMap<String, StepReturnValue> validate() {
         return null; // NOSONAR
     }
-    
+
     @Override
     public boolean execute() {
         PluginReturnValue ret = run();
         return ret != PluginReturnValue.ERROR;
+    }
+
+    private void writeJournalEntry(String message, LogType type) {
+        JournalEntry entry = new JournalEntry(this.process.getId(), new Date(), this.getTitle(), type, message, EntryType.PROCESS);
+        JournalManager.saveJournalEntry(entry);
     }
 
 }
