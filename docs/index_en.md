@@ -3,6 +3,10 @@ title: Renaming files before the Rosetta ingest
 identifier: intranda_step_rename_files_before_rosetta
 published: true
 description: This step plugin allows you to automatically adjust file names within Goobi's media and OCR folders and update the METS file of processes before the ingest into Rosetta is happening.
+keywords:
+    - Goobi workflow
+    - Plugin
+    - Step Plugin
 ---
 ## Introduction
 This plugin is used to conditionally rename files within the media and ocr folders of an operation of Goobi workflow. The naming is dependent on the process title and a configurable format.
