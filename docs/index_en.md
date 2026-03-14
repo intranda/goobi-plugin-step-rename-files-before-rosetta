@@ -60,7 +60,7 @@ The plugin is usually executed fully automatically within the workflow:
 
 It first determines whether there is a block within the configuration file that has been configured for the current workflow with regard to project name and workflow step. 
 
-If this is the case, the plugin will rename all files from the relavant folders using the formula `{tail of process_title after the first _ }_{formatted order of the file in this folder}`. 
+If this is the case, the plugin will rename all files from the relevant folders using the formula `{tail of process_title after the first _ }_{formatted order of the file in this folder}`. 
 
 After that it will update the METS file to assure that Goobi workflow and Rosetta are still able to work with the updated information.
 

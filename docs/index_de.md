@@ -62,7 +62,7 @@ Es ermittelt zunächst, ob sich innerhalb der Konfigurationsdatei ein Block befi
 
 Wenn dies der Fall ist, benennt das Plugin alle Dateien aus den entsprechenden Ordnern nach dem Format `{Hinterer Teil des Vorgangstitels nach dem ersten _ }_{formatierte Reihenfolge der Datei in diesem Ordner}` um.
 
-Im Anschluß daran wird die METS-Datei aktualisiert, um sicherzustellen, dass Goobi workflow und Rosetta weiterhin mit den aktualisierten Informationen arbeiten können.
+Im Anschluss daran wird die METS-Datei aktualisiert, um sicherzustellen, dass Goobi workflow und Rosetta weiterhin mit den aktualisierten Informationen arbeiten können.
 
 Das Plugin berücksichtigt für die Benennung die Dateien innerhalb der folgenden Unterverzeichnisse:
 
